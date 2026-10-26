@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TRA Live Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* Layout: one column board — status strip, then search / station board / train view. Departure-board feel, signal colours for state. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#14202b; --muted:#5b6b78; --line:#d5dde4;
+  --accent:#0a5c8a; --accent-soft:#e1eef6; --board:#0f1c26; --board-ink:#f4c542;
+  --ok:#1f8a4c; --warn:#c77700; --late:#c0392b;
+  --tc:#c0392b; --ck:#d08b00; --local:#1e6fb0; --fast:#6a3fb5; --other:#55606a;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --body:"Barlow","Noto Sans TC",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0c141b; --panel:#14202b; --ink:#e7edf2; --muted:#93a4b2; --line:#26343f;
+  --accent:#5fb3e6; --accent-soft:#16303f; --board:#060b10; --board-ink:#f4c542;
+  --ok:#4cc27e; --warn:#f0a83a; --late:#ff6b5c;
+  --tc:#ff6b5c; --ck:#f0b429; --local:#5fa8e6; --fast:#a98be8; --other:#93a4b2; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);min-height:100vh}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header{background:var(--board);color:#fff;position:sticky;top:0;z-index:5}
+.hwrap{max-width:980px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.brand{font:700 22px/1 var(--display);letter-spacing:.04em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;gap:10px}
+.brand i{width:12px;height:12px;border-radius:50%;background:var(--board-ink);box-shadow:0 0 0 3px rgba(244,197,66,.25)}
+.status{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font:500 12px/1.3 var(--mono);color:#b9c6d0}
+.status b{color:var(--board-ink);font-weight:700}
+.status .err{color:#ff8a7a}
+.hbtn{background:transparent;border:1px solid #38505f;color:#fff;border-radius:6px;padding:5px 10px;font:600 12px var(--body);cursor:pointer}
+.hbtn:hover{border-color:var(--board-ink)}
+.bar{height:3px;background:#1d2d39}
+.bar>div{height:100%;background:var(--board-ink);width:0;transition:width 1s linear}
+
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px;display:grid;gap:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+h1,h2{font-family:var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0;text-wrap:balance}
+h1{font-size:30px;line-height:1.05}
+h2{font-size:20px}
+.sub{color:var(--muted);margin:4px 0 0}
+.zh{font-family:"Noto Sans TC",var(--body);color:var(--muted);font-weight:400}
+
+.search{position:relative;margin-top:14px}
+.search input{width:100%;padding:14px 16px;font-size:18px;border:2px solid var(--line);border-radius:10px;background:var(--bg)}
+.search input:focus{border-color:var(--accent);outline:none}
+.results{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+.results li button{width:100%;text-align:left;display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);background:var(--panel);border-radius:8px;cursor:pointer}
+.results li button:hover,.results li button:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+.results .nm{font-weight:600}
+.results .id{font:500 12px var(--mono);color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:500}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.back{background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;padding:0;margin-bottom:8px}
+.stationhead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:end}
+
+.board{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;margin-top:12px}
+.board th{font:600 11px var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:2px solid var(--line);white-space:nowrap}
+.board td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.board tr.row{cursor:pointer}
+.board tr.row:hover td,.board tr.row:focus-visible td{background:var(--accent-soft)}
+.board tr.row:focus-visible{outline:none}
+.time{font:700 18px var(--mono)}
+.time s{color:var(--muted);font-size:13px;font-weight:500;display:block}
+.tno{font:700 16px var(--mono)}
+.type{display:inline-block;font:600 12px var(--body);padding:2px 8px;border-radius:4px;color:#fff;white-space:nowrap}
+.dest{font-weight:600}
+.pill{display:inline-block;font:600 12px var(--body);padding:2px 8px;border-radius:999px;white-space:nowrap;border:1px solid currentColor}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.late{color:var(--late)} .pill.idle{color:var(--muted)}
+.where{font-size:12px;color:var(--muted);display:block;margin-top:2px}
+.empty{color:var(--muted);padding:24px 8px;text-align:center}
+
+.live{display:grid;gap:4px;padding:14px 16px;border-radius:10px;background:var(--board);color:#fff;margin-top:12px}
+.live .big{font:700 22px/1.2 var(--display);letter-spacing:.02em;color:var(--board-ink);text-transform:uppercase}
+.live .small{font:500 12px var(--mono);color:#b9c6d0}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+.mapbox{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}
+.mapbox svg{width:100%;height:auto;display:block;max-height:640px}
+.stops{list-style:none;margin:0;padding:0}
+.stops li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:38px;position:relative}
+.stops li::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--line)}
+.stops li:first-child::before{top:50%} .stops li:last-child::before{bottom:50%}
+.stops li.done::before{background:var(--accent)}
+.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);background:var(--panel);margin-left:5px;position:relative;z-index:1}
+.done .dot{background:var(--accent);border-color:var(--accent)}
+.here .dot{width:18px;height:18px;margin-left:2px;background:var(--board-ink);border-color:var(--board);box-shadow:0 0 0 4px rgba(244,197,66,.35)}
+.between{min-height:28px}
+.between .dot{display:none}
+.between .train{font:600 12px var(--body);color:var(--board);background:var(--board-ink);padding:2px 8px;border-radius:4px;justify-self:start}
+.stops .sn{font-weight:600}
+.stops .done .sn{color:var(--muted);font-weight:500}
+.stops .st{font:500 13px var(--mono);text-align:right;white-space:nowrap}
+.stops .st s{color:var(--muted);margin-right:6px}
+.selstop .sn::after{content:" · your station";color:var(--accent);font-weight:500;font-size:12px}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:p 1.6s ease-out infinite}@keyframes p{0%{r:7}70%{r:16;opacity:0}100%{opacity:0}}}
+
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);max-width:min(520px,92vw);padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog label{display:block;font-weight:600;margin-top:12px}
+dialog input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin-top:4px;font-family:var(--mono);font-size:13px}
+.row2{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:8px 14px;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)}
+.note{font-size:13px;color:var(--muted)}
+.notice{border-left:4px solid var(--warn);background:var(--panel);padding:12px 14px;border-radius:6px;font-size:14px}
+.notice.err{border-color:var(--late)}
+footer{max-width:980px;margin:0 auto;padding:0 16px 30px;font-size:12px;color:var(--muted)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <div class="hwrap">
+    <div class="brand" id="home" role="link" tabindex="0"><i></i>TRA Live</div>
+    <div class="status" aria-live="polite">
+      <span>Last refreshed <b id="lastRef">—</b></span>
+      <span>Feed time <b id="feedTime">—</b></span>
+      <span>Next in <b id="countdown">60s</b></span>
+      <span id="trainsCount"></span>
+      <button class="hbtn" id="refreshBtn">Refresh now</button>
+      <button class="hbtn" id="settingsBtn">API key</button>
+    </div>
+  </div>
+  <div class="bar"><div id="bar"></div></div>
+</header>
+
+<main id="app"></main>
+
+<footer>
+  Data: Taiwan Railway (TRA) via <a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">TDX Transport Data eXchange</a>, Ministry of Transportation and Communications, R.O.C. Live train positions come from TRA's TrainLiveBoard feed (updated about every 30 s); schedules from TRA's daily timetable. Times shown in Taiwan time (UTC+8). MRT, metro and High Speed Rail are not included.
+</footer>
+
+<dialog id="settings">
+  <h2>TDX API key</h2>
+  <p class="note">Free, from the Ministry of Transportation's TDX platform. Without a key, TDX allows only a small number of requests per day per IP, which auto-refresh uses up quickly. Register at <a href="https://tdx.transportdata.tw/register" target="_blank" rel="noopener">tdx.transportdata.tw</a>, then copy your Client Id and Client Secret from Member Center → API keys. They are stored only in this browser.</p>
+  <form id="keyForm" method="dialog">
+    <label for="cid">Client Id</label>
+    <input id="cid" autocomplete="off" spellcheck="false">
+    <label for="csec">Client Secret</label>
+    <input id="csec" autocomplete="off" spellcheck="false" type="password">
+    <p class="note" id="keyMsg"></p>
+    <div class="row2">
+      <button type="button" class="btn ghost" id="clearKey">Remove key</button>
+      <button type="button" class="btn ghost" id="closeKey">Close</button>
+      <button type="submit" class="btn" id="saveKey">Save &amp; test</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+const API = "https://tdx.transportdata.tw/api/basic";
+const TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token";
+const REFRESH_MS = 60000;
+
+/* ---------- storage helpers ---------- */
+const store = {
+  get(k, d=null){ try{ const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} },
+  del(k){ try{ localStorage.removeItem(k); }catch{} }
+};
+
+/* ---------- Taiwan time ---------- */
+const tpFmt = new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+function tpNow(){
+  const p = Object.fromEntries(tpFmt.formatToParts(new Date()).map(x=>[x.type,x.value]));
+  return { date:`${p.year}-${p.month}-${p.day}`, hms:`${p.hour}:${p.minute}:${p.second}`, min:+p.hour*60 + +p.minute + +p.second/60 };
+}
+function fmtFeed(iso){
+  if(!iso) return "—";
+  const d = new Date(iso); if(isNaN(d)) return String(iso);
+  const p = Object.fromEntries(tpFmt.formatToParts(d).map(x=>[x.type,x.value]));
+  return `${p.hour}:${p.minute}:${p.second}`;
+}
+const toMin = t => { if(!t) return null; const [h,m] = t.split(":").map(Number); return h*60+m; };
+const fromMin = m => { m = ((Math.round(m)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); };
+
+/* ---------- name helpers ---------- */
+const nm = o => !o ? "" : typeof o === "string" ? o : (o.En || o.Zh_tw || "");
+const zh = o => !o ? "" : typeof o === "string" ? "" : (o.Zh_tw || "");
+const norm = s => (s||"").toLowerCase().replace(/台/g,"臺").replace(/[\s'’\-–.()]/g,"");
+const esc = s => String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function typeInfo(t){
+  const en = nm(t), z = zh(t), s = (en+" "+z).toLowerCase();
+  let label = en.replace(/\(.*$/,"").trim() || z.replace(/\(.*$/,"").trim() || "Train";
+  let color = "var(--other)";
+  if(/taroko|太魯閣/.test(s)){ label="Taroko"; color="var(--tc)"; }
+  else if(/puyuma|普悠瑪/.test(s)){ label="Puyuma"; color="var(--tc)"; }
+  else if(/tze|自強/.test(s)){ label = /3000/.test(s) ? "Tze-Chiang 3000" : "Tze-Chiang"; color="var(--tc)"; }
+  else if(/chu|莒光/.test(s)){ label="Chu-Kuang"; color="var(--ck)"; }
+  else if(/fu-hsing|復興/.test(s)){ label="Fu-Hsing"; color="var(--ck)"; }
+  else if(/fast local|區間快/.test(s)){ label="Fast Local"; color="var(--fast)"; }
+  else if(/local|區間/.test(s)){ label="Local"; color="var(--local)"; }
+  else if(/ordinary|普快/.test(s)){ label="Ordinary"; color="var(--other)"; }
+  return { label, color, zh:z.replace(/\(.*$/,"") };
+}
+const typeBadge = t => { const i = typeInfo(t); return `<span class="type" style="background:${i.color}" title="${esc(nm(t)||i.zh)}">${esc(i.label)}</span>`; };
+const STATUS = {0:"Arriving at", 1:"At", 2:"Departed"};
+
+/* ---------- TDX client ---------- */
+async function getToken(force=false){
+  const k = store.get("tdxKey");
+  if(!k || !k.id || !k.secret) return null;
+  const cached = store.get("tdxToken");
+  if(!force && cached && cached.exp > Date.now()+60000) return cached.token;
+  const body = new URLSearchParams({grant_type:"client_credentials", client_id:k.id, client_secret:k.secret});
+  const r = await fetch(TOKEN_URL,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});
+  if(!r.ok) throw new Error(`Key rejected by TDX (HTTP ${r.status}). Check the Client Id and Secret.`);
+  const j = await r.json();
+  store.set("tdxToken",{token:j.access_token, exp:Date.now()+(j.expires_in||86400)*1000});
+  return j.access_token;
+}
+async function tdx(path, retry=true){
+  const url = API + path + (path.includes("?") ? "&" : "?") + "$format=JSON";
+  const token = await getToken();
+  const headers = token ? {Authorization:"Bearer "+token} : {};
+  let r;
+  try{ r = await fetch(url,{headers, cache:"no-store"}); }
+  catch(e){ throw new Error("Could not reach TDX. Check your internet connection. If you opened this file directly and it keeps failing, serve it locally (e.g. `python -m http.server`) and open http://localhost:8000."); }
+  if(r.status === 401 && token && retry){ await getToken(true); return tdx(path,false); }
+  if(r.status === 429) throw Object.assign(new Error(token ? "TDX rate limit hit; it will retry on the next refresh." : "TDX's daily limit for use without a key is used up. Add your free TDX API key to keep live updates running."),{rate:true});
+  if(!r.ok) throw Object.assign(new Error(`TDX returned HTTP ${r.status} for ${path.split("?")[0]}`),{status:r.status});
+  return r.json();
+}
+async function tdxFirst(list){ // try endpoints in order (v3 then v2)
+  let last;
+  for(const [path, parse] of list){
+    try{ const j = await tdx(path); const out = parse(j); if(out) return out; }
+    catch(e){ last = e; if(e.rate) throw e; }
+  }
+  throw last || new Error("No data returned");
+}
+
+/* ---------- data ---------- */
+const state = { stations:[], byId:{}, live:{}, liveTime:null, lastRef:null, err:null, view:null, timer:null, nextAt:0, stTT:{}, trTT:{} };
+
+async function loadStations(){
+  const c = store.get("traStations");
+  if(c && c.t > Date.now()-7*864e5 && c.list?.length){ setStations(c.list); return; }
+  const list = await tdxFirst([
+    ["/v3/Rail/TRA/Station", j => j.Stations],
+    ["/v2/Rail/TRA/Station", j => Array.isArray(j) ? j : null]
+  ]);
+  const slim = list.map(s=>({id:s.StationID, en:nm(s.StationName), zh:zh(s.StationName), lat:s.StationPosition?.PositionLat, lon:s.StationPosition?.PositionLon, cls:s.StationClass}));
+  store.set("traStations",{t:Date.now(), list:slim});
+  setStations(slim);
+}
+function setStations(list){ state.stations = list; state.byId = Object.fromEntries(list.map(s=>[s.id,s])); }
+
+async function loadLive(){
+  const j = await tdxFirst([
+    ["/v3/Rail/TRA/TrainLiveBoard", j => j.TrainLiveBoards ? j : null],
+    ["/v2/Rail/TRA/LiveTrainDelay", j => Array.isArray(j) ? {TrainLiveBoards:j, UpdateTime:j[0]?.UpdateTime} : null]
+  ]);
+  const map = {};
+  for(const t of j.TrainLiveBoards){
+    map[String(t.TrainNo)] = { no:String(t.TrainNo), sid:t.StationID, sname:t.StationName, status:t.TrainStationStatus, delay:+t.DelayTime||0, upd:t.UpdateTime, type:t.TrainTypeName };
+  }
+  state.live = map;
+  state.liveTime = j.SrcUpdateTime || j.UpdateTime || null;
+}
+
+async function loadStationTT(sid){
+  const key = tpNow().date+"|"+sid;
+  if(state.stTT[key]) return state.stTT[key];
+  const rows = await tdxFirst([
+    [`/v3/Rail/TRA/DailyStationTimetable/Today/Station/${sid}`, j => {
+      const arr = j.StationTimetables; if(!arr) return null;
+      const out = [];
+      for(const g of arr) for(const t of (g.TimeTables || g.Timetables || g.StopTimes || []))
+        out.push({no:String(t.TrainNo), dir:g.Direction ?? t.Direction, type:t.TrainTypeName, dest:t.DestinationStationName || t.EndingStationName, destId:t.DestinationStationID || t.EndingStationID, arr:t.ArrivalTime, dep:t.DepartureTime || t.ArrivalTime});
+      return out;
+    }],
+    [`/v2/Rail/TRA/DailyTimetable/Station/${sid}/${tpNow().date}`, j => Array.isArray(j) ? j.map(t=>({no:String(t.TrainNo), dir:t.Direction, type:t.TrainTypeName, dest:t.EndingStationName, destId:t.EndingStationID, arr:t.ArrivalTime, dep:t.DepartureTime||t.ArrivalTime})) : null]
+  ]);
+  state.stTT[key] = rows; return rows;
+}
+
+async function loadTrainTT(no){
+  const key = tpNow().date+"|"+no;
+  if(state.trTT[key]) return state.trTT[key];
+  const tt = await tdxFirst([
+    [`/v3/Rail/TRA/DailyTrainTimetable/Today/TrainNo/${no}`, j => { const t = j.TrainTimetables?.[0]; return t ? {info:t.TrainInfo, stops:t.StopTimes} : null; }],
+    [`/v2/Rail/TRA/DailyTimetable/Today/TrainNo/${no}`, j => Array.isArray(j) && j[0] ? {info:j[0].DailyTrainInfo, stops:j[0].StopTimes} : null]
+  ]);
+  tt.stops.sort((a,b)=>(a.StopSequence??0)-(b.StopSequence??0));
+  state.trTT[key] = tt; return tt;
+}
+
+/* ---------- routing ---------- */
+function parseHash(){ const h = new URLSearchParams(location.hash.slice(1)); return {s:h.get("s"), t:h.get("t")}; }
+function go(params){ const h = new URLSearchParams(); if(params.s) h.set("s",params.s); if(params.t) h.set("t",params.t); location.hash = h.toString(); }
+window.addEventListener("hashchange", render);
+document.getElementById("home").onclick = () => go({});
+document.getElementById("home").onkeydown = e => { if(e.key==="Enter") go({}); };
+
+/* ---------- views ---------- */
+const app = document.getElementById("app");
+app.addEventListener("click", e => { const b = e.target.closest("button[data-s]"); if(b) go({s:b.dataset.s}); });
+function notice(){ return state.err ? `<div class="notice err" role="alert">${esc(state.err)}</div>` : ""; }
+
+function renderSearch(){
+  const q = app.querySelector("#q")?.value ?? store.get("lastQuery","");
+  app.innerHTML = `${notice()}
+  <section class="panel">
+    <h1>Find your station</h1>
+    <p class="sub">Every Taiwan Railway station, from Keelung to Fangshan. Type an English or Chinese name, or a station code.</p>
+    <div class="search"><input id="q" type="search" placeholder="e.g. Hualien, 板橋, Ruifang" autocomplete="off" value="${esc(q)}" aria-label="Station name"></div>
+    <ul class="results" id="res"></ul>
+    <div class="chips" id="pop" aria-label="Major stations"></div>
+  </section>`;
+  const input = app.querySelector("#q"), res = app.querySelector("#res");
+  const pop = ["Taipei","Banqiao","Taoyuan","Hsinchu","Miaoli","Taichung","Changhua","Chiayi","Tainan","Kaohsiung","Pingtung","Yilan","Hualien","Taitung","Keelung","Ruifang"]
+    .map(n => state.stations.find(s=>s.en.toLowerCase()===n.toLowerCase())).filter(Boolean);
+  app.querySelector("#pop").innerHTML = pop.map(s=>`<button class="chip" data-s="${s.id}">${esc(s.en)} <span class="zh">${esc(s.zh)}</span></button>`).join("");
+  const draw = () => {
+    const v = norm(input.value); store.set("lastQuery", input.value);
+    if(!v){ res.innerHTML = ""; return; }
+    const hits = state.stations.map(s=>{
+      const a = norm(s.en), b = norm(s.zh);
+      const score = a===v||b===v||s.id===v ? 0 : a.startsWith(v)||b.startsWith(v) ? 1 : a.includes(v)||b.includes(v)||s.id.startsWith(v) ? 2 : 9;
+      return [score,s];
+    }).filter(x=>x[0]<9).sort((x,y)=>x[0]-y[0]||x[1].en.localeCompare(y[1].en)).slice(0,12);
+    res.innerHTML = hits.length ? hits.map(([,s])=>`<li><button data-s="${s.id}"><span><span class="nm">${esc(s.en)}</span> <span class="zh">${esc(s.zh)}</span></span><span class="id">${s.id}</span></button></li>`).join("")
+      : `<li class="empty">No station matches “${esc(input.value)}”.</li>`;
+  };
+  input.addEventListener("input", draw);
+  input.addEventListener("keydown", e => { if(e.key==="Enter"){ const b = res.querySelector("button"); if(b) b.click(); } });
+  draw();
+  if(!matchMedia("(pointer:coarse)").matches) input.focus();
+}
+
+let stationDir = store.get("dirFilter","all");
+async function renderStation(sid){
+  const st = state.byId[sid];
+  if(!st){ app.innerHTML = `${notice()}<section class="panel"><button class="back" onclick="location.hash=''">← Stations</button><p>Unknown station code ${esc(sid)}.</p></section>`; return; }
+  const head = `<button class="back" id="back">← Change station</button>
+    <div class="stationhead"><div><h1>${esc(st.en)} <span class="zh">${esc(st.zh)}</span></h1><p class="sub">Upcoming departures · station ${st.id}</p></div>
+    <div class="chips" role="group" aria-label="Direction">
+      ${[["all","All"],["0","Clockwise 順行"],["1","Counter-clockwise 逆行"]].map(([v,l])=>`<button class="chip" data-dir="${v}" aria-pressed="${stationDir===v}">${l}</button>`).join("")}
+    </div></div>`;
+  if(!app.querySelector(`[data-station="${sid}"]`)) app.innerHTML = `${notice()}<section class="panel" data-station="${sid}">${head}<div class="empty">Loading today's timetable…</div></section>`;
+  let rows;
+  try{ rows = await loadStationTT(sid); }
+  catch(e){ app.innerHTML = `<div class="notice err">${esc(e.message)}</div><section class="panel" data-station="${sid}">${head}</section>`; bindStation(sid); return; }
+  if(parseHash().s !== sid || parseHash().t) return;
+  const now = tpNow().min;
+  const list = rows.map(r=>{
+    let t = toMin(r.dep); if(t < now-720) t += 1440;
+    const lv = state.live[r.no];
+    return {...r, t, lv, eta: t + (lv?.delay||0)};
+  }).filter(r => (stationDir==="all" || String(r.dir)===stationDir) && (r.eta >= now-1 || (r.lv && r.lv.sid===sid && r.lv.status!==2)))
+    .sort((a,b)=>a.eta-b.eta).slice(0,40);
+
+  const body = list.length ? list.map(r=>{
+    const lv = r.lv; let pill, where = "";
+    if(lv){
+      pill = lv.delay>=5 ? `<span class="pill late">${lv.delay} min late</span>` : lv.delay>0 ? `<span class="pill warn">${lv.delay} min late</span>` : `<span class="pill ok">On time</span>`;
+      where = `<span class="where">${STATUS[lv.status]||"Near"} ${esc(nm(lv.sname)||state.byId[lv.sid]?.en||lv.sid)}</span>`;
+    } else pill = `<span class="pill idle">Not running yet</span>`;
+    const timeCell = lv && lv.delay>0 ? `${fromMin(r.eta)}<s>${esc(r.dep)}</s>` : esc(r.dep);
+    const dest = state.byId[r.destId];
+    return `<tr class="row" tabindex="0" data-t="${r.no}"><td class="time">${timeCell}</td><td class="tno">${esc(r.no)}</td><td>${typeBadge(r.type)}</td>
+      <td class="dest">${esc(nm(r.dest)||dest?.en||"")} <span class="zh">${esc(zh(r.dest)||dest?.zh||"")}</span></td><td>${pill}${where}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">No more departures${stationDir!=="all"?" in this direction":""} today.</td></tr>`;
+
+  app.innerHTML = `${notice()}<section class="panel" data-station="${sid}">${head}
+    <div class="tablewrap"><table class="board"><thead><tr><th>Departs</th><th>Train</th><th>Type</th><th>To</th><th>Live status</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="note">Tap a train to see where it is now. Expected times include the delay TRA is reporting.</p></section>`;
+  bindStation(sid);
+}
+function bindStation(sid){
+  app.querySelector("#back")?.addEventListener("click",()=>go({}));
+  app.querySelectorAll("[data-dir]").forEach(b=>b.onclick=()=>{ stationDir=b.dataset.dir; store.set("dirFilter",stationDir); renderStation(sid); });
+  app.querySelectorAll("tr.row").forEach(tr=>{ const open=()=>go({s:sid,t:tr.dataset.t}); tr.onclick=open; tr.onkeydown=e=>{ if(e.key==="Enter") open(); }; });
+}
+
+async function renderTrain(no, sid){
+  if(!app.querySelector(`[data-train="${no}"]`)) app.innerHTML = `${notice()}<section class="panel" data-train="${no}"><div class="empty">Loading train ${esc(no)}…</div></section>`;
+  let tt;
+  try{ tt = await loadTrainTT(no); }
+  catch(e){ app.innerHTML = `<div class="notice err">${esc(e.message)}</div><section class="panel"><button class="back" id="back">← Back</button></section>`; app.querySelector("#back").onclick=()=>go({s:sid}); return; }
+  if(parseHash().t !== no) return;
+  const info = tt.info || {}, stops = tt.stops, lv = state.live[no];
+  const now = tpNow().min, delay = lv?.delay || 0;
+  const first = toMin(stops[0]?.DepartureTime || stops[0]?.ArrivalTime);
+  const fixT = t => { let m = toMin(t); if(m==null) return null; if(m < first-60) m += 1440; return m; };
+  const S = stops.map(s=>({id:s.StationID, name:nm(s.StationName)||state.byId[s.StationID]?.en, zhn:zh(s.StationName)||state.byId[s.StationID]?.zh, arr:s.ArrivalTime, dep:s.DepartureTime||s.ArrivalTime, a:fixT(s.ArrivalTime||s.DepartureTime), d:fixT(s.DepartureTime||s.ArrivalTime)}));
+
+  // Work out position: index of stop the train is at (pos = i) or between (pos = i + 0.5)
+  let pos = null, positionText, src;
+  if(lv){
+    src = "live";
+    const idx = S.findIndex(s=>s.id===lv.sid);
+    const lname = nm(lv.sname) || state.byId[lv.sid]?.en || lv.sid;
+    if(idx>=0){ pos = lv.status===1 ? idx : lv.status===0 ? Math.max(idx-0.5,0) : Math.min(idx+0.5, S.length-1); }
+    else { pos = nearestSegment(S, state.byId[lv.sid]); }
+    positionText = `${STATUS[lv.status] || "Passing"} ${lname}${idx<0 ? " (passing, no stop)" : ""}`;
+  } else {
+    src = "schedule";
+    const lastD = S[S.length-1].a;
+    if(now < S[0].d){ positionText = `Not departed yet · leaves ${S[0].name} at ${S[0].dep}`; pos = -1; }
+    else if(now > lastD + 5){ positionText = `Journey finished · arrived ${S[S.length-1].name} at ${S[S.length-1].arr}`; pos = S.length-1; }
+    else { positionText = "Not reporting live position right now"; pos = null; }
+  }
+  const delayTxt = lv ? (delay>0 ? `${delay} min late` : "On time") : "";
+  const ti = typeInfo(info.TrainTypeName);
+  const from = nm(info.StartingStationName) || S[0]?.name, to = nm(info.EndingStationName) || S[S.length-1]?.name;
+
+  // stop list
+  let lis = "";
+  S.forEach((s,i)=>{
+    const done = pos!=null && (i < pos || (i===pos && lv?.status===2));
+    const here = pos===i;
+    const exp = m => m==null ? "" : delay>0 && !done ? `<s>${fromMin(m)}</s>${fromMin(m+delay)}` : fromMin(m);
+    lis += `<li class="${done?"done":""} ${here?"here":""} ${s.id===sid?"selstop":""}"><span class="dot"></span><span class="sn">${esc(s.name)} <span class="zh">${esc(s.zhn||"")}</span></span><span class="st">${i===0?exp(s.d):exp(s.a)}</span></li>`;
+    if(pos!=null && pos>i && pos<i+1) lis += `<li class="between done"><span class="dot"></span><span class="train">▼ ${esc(no)} is here</span><span></span></li>`;
+  });
+
+  app.innerHTML = `${notice()}<section class="panel" data-train="${no}">
+    <button class="back" id="back">← ${sid && state.byId[sid] ? esc(state.byId[sid].en)+" departures" : "Back"}</button>
+    <div class="stationhead"><div><h1><span style="font-family:var(--mono)">${esc(no)}</span> ${esc(from)} → ${esc(to)}</h1>
+      <p class="sub"><span class="type" style="background:${ti.color}">${esc(ti.label)}</span> <span class="zh">${esc(nm(info.TrainTypeName)? zh(info.TrainTypeName):"")}</span> · ${info.Direction===1?"Counter-clockwise 逆行":"Clockwise 順行"} · ${S.length} stops</p></div></div>
+    <div class="live" aria-live="polite"><div class="big">${esc(positionText)}${delayTxt?` · ${delayTxt}`:""}</div>
+      <div class="small">${src==="live" ? `Position reported by TRA at ${fmtFeed(lv.upd)} · feed ${fmtFeed(state.liveTime)} · page refreshed ${state.lastRef||"—"}` : `No live record for this train in the current TRA feed (feed ${fmtFeed(state.liveTime)}). Times below are scheduled.`}</div></div>
+    <div class="cols"><div class="mapbox">${mapSVG(S, pos, sid, no)}</div><ol class="stops">${lis}</ol></div>
+  </section>`;
+  app.querySelector("#back").onclick = () => go({s:sid});
+}
+
+function nearestSegment(S, st){
+  if(!st?.lat) return null;
+  let best=null, bd=1e9;
+  for(let i=0;i<S.length-1;i++){
+    const a = state.byId[S[i].id], b = state.byId[S[i+1].id]; if(!a?.lat||!b?.lat) continue;
+    const ax=a.lon, ay=a.lat, bx=b.lon, by=b.lat, px=st.lon, py=st.lat;
+    const dx=bx-ax, dy=by-ay, L=dx*dx+dy*dy||1e-9, t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/L));
+    const d=(ax+t*dx-px)**2+(ay+t*dy-py)**2; if(d<bd){bd=d; best=i+0.5;}
+  }
+  return best;
+}
+
+function mapSVG(S, pos, sid, no){
+  const pts = state.stations.filter(s=>s.lat && s.lon);
+  if(!pts.length) return "";
+  const minLon=119.95, maxLon=122.05, minLat=21.85, maxLat=25.35;
+  const W=360, H=Math.round(W*(maxLat-minLat)/((maxLon-minLon)*Math.cos(23.6*Math.PI/180)));
+  const X = lon => ((lon-minLon)/(maxLon-minLon)*W).toFixed(1), Y = lat => ((maxLat-lat)/(maxLat-minLat)*H).toFixed(1);
+  const route = S.map(s=>state.byId[s.id]).filter(s=>s?.lat);
+  const routePts = route.map(s=>`${X(s.lon)},${Y(s.lat)}`).join(" ");
+  let marker = "";
+  if(pos!=null && pos>=0){
+    const i = Math.floor(pos), f = pos-i;
+    const a = state.byId[S[i]?.id], b = state.byId[S[Math.min(i+1,S.length-1)]?.id];
+    const lv = state.live[no];
+    let p = a;
+    if(lv && state.byId[lv.sid]?.lat && !S.some(s=>s.id===lv.sid)) p = state.byId[lv.sid];
+    if(p?.lat){
+      let lon=p.lon, lat=p.lat;
+      if(p===a && f>0 && b?.lat){ lon = a.lon+(b.lon-a.lon)*f; lat = a.lat+(b.lat-a.lat)*f; }
+      marker = `<circle class="pulse" cx="${X(lon)}" cy="${Y(lat)}" r="7" fill="var(--board-ink)" opacity=".6"/><circle cx="${X(lon)}" cy="${Y(lat)}" r="6" fill="var(--board-ink)" stroke="var(--board)" stroke-width="2"/>
+      <text x="${+X(lon)+10}" y="${+Y(lat)+4}" font-family="JetBrains Mono,monospace" font-size="12" font-weight="700" fill="var(--ink)" paint-order="stroke" stroke="var(--bg)" stroke-width="3">${esc(no)}</text>`;
+    }
+  }
+  const sel = state.byId[sid];
+  const endLbl = (s,anchor) => s ? `<text x="${+X(s.lon)+(anchor==="end"?-8:8)}" y="${+Y(s.lat)+4}" text-anchor="${anchor}" font-size="11" font-weight="600" fill="var(--muted)" paint-order="stroke" stroke="var(--bg)" stroke-width="3">${esc(s.en)}</text>` : "";
+  return `<svg viewBox="-10 -10 ${W+20} ${H+20}" role="img" aria-label="Map of the train's route with its current position">
+    ${pts.map(s=>`<circle cx="${X(s.lon)}" cy="${Y(s.lat)}" r="1.6" fill="var(--line)"/>`).join("")}
+    <polyline points="${routePts}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity=".85"/>
+    ${route.map(s=>`<circle cx="${X(s.lon)}" cy="${Y(s.lat)}" r="2.6" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.5"/>`).join("")}
+    ${sel?.lat ? `<circle cx="${X(sel.lon)}" cy="${Y(sel.lat)}" r="5" fill="none" stroke="var(--late)" stroke-width="2"/>` : ""}
+    ${endLbl(route[0],"end")}${endLbl(route[route.length-1],"start")}
+    ${marker}
+  </svg>`;
+}
+
+/* ---------- refresh loop ---------- */
+async function refresh(){
+  try{
+    if(!state.stations.length) await loadStations();
+    await loadLive();
+    state.err = null;
+    state.lastRef = tpNow().hms;
+  }catch(e){ state.err = e.message; }
+  state.nextAt = Date.now()+REFRESH_MS;
+  document.getElementById("lastRef").textContent = state.lastRef || "—";
+  document.getElementById("feedTime").textContent = fmtFeed(state.liveTime);
+  document.getElementById("trainsCount").innerHTML = Object.keys(state.live).length ? `Trains live <b>${Object.keys(state.live).length}</b>` : "";
+  render();
+}
+function render(){
+  const h = parseHash();
+  if(!state.stations.length){ app.innerHTML = notice() || `<section class="panel"><div class="empty">Loading stations from TRA…</div></section>`; return; }
+  if(h.t) renderTrain(h.t, h.s); else if(h.s) renderStation(h.s); else if(!app.querySelector("#q")) renderSearch(); else if(state.err && !app.querySelector(".notice")) renderSearch();
+}
+setInterval(()=>{
+  const left = Math.max(0, state.nextAt-Date.now());
+  document.getElementById("countdown").textContent = Math.ceil(left/1000)+"s";
+  document.getElementById("bar").style.width = (100 - left/REFRESH_MS*100)+"%";
+  if(left<=0 && !document.hidden){ state.nextAt = Date.now()+REFRESH_MS; refresh(); }
+},1000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && Date.now() > state.nextAt) refresh(); });
+document.getElementById("refreshBtn").onclick = refresh;
+
+/* ---------- settings ---------- */
+const dlg = document.getElementById("settings");
+document.getElementById("settingsBtn").onclick = () => { const k = store.get("tdxKey",{}); cid.value = k.id||""; csec.value = k.secret||""; keyMsg.textContent = k.id ? "A key is saved." : "No key saved: using limited access without a key."; dlg.showModal(); };
+document.getElementById("closeKey").onclick = () => dlg.close();
+document.getElementById("clearKey").onclick = () => { store.del("tdxKey"); store.del("tdxToken"); keyMsg.textContent = "Key removed."; };
+document.getElementById("keyForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  store.set("tdxKey",{id:cid.value.trim(), secret:csec.value.trim()}); store.del("tdxToken");
+  keyMsg.textContent = "Testing…";
+  try{ await getToken(true); keyMsg.textContent = "Key works. Live updates will use it."; setTimeout(()=>dlg.close(),800); refresh(); }
+  catch(err){ keyMsg.textContent = err.message; }
+});
+
+refresh();
+</script>
+</body>
+</html>
