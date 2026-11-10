@@ -297,6 +297,7 @@ async function loadTrainTT(no){
     [`/v3/Rail/TRA/DailyTrainTimetable/Today/TrainNo/${no}`, j => { const t = j.TrainTimetables?.[0]; return t ? {info:t.TrainInfo, stops:t.StopTimes} : null; }],
     [`/v2/Rail/TRA/DailyTimetable/Today/TrainNo/${no}`, j => Array.isArray(j) && j[0] ? {info:j[0].DailyTrainInfo, stops:j[0].StopTimes} : null]
   ]);
+  tt.stops = Array.isArray(tt.stops) ? tt.stops : [];
   tt.stops.sort((a,b)=>(a.StopSequence??0)-(b.StopSequence??0));
   state.trTT[key] = tt; return tt;
 }
@@ -396,6 +397,11 @@ async function renderTrain(no, sid){
   catch(e){ app.innerHTML = `<div class="notice err">${esc(e.message)}</div><section class="panel"><button class="back" id="back">← Back</button></section>`; app.querySelector("#back").onclick=()=>go({s:sid}); return; }
   if(parseHash().t !== no) return;
   const info = tt.info || {}, stops = tt.stops, lv = state.live[no];
+  if(!stops.length){
+    app.innerHTML = `${notice()}<section class="panel"><button class="back" id="back">← Back</button><p>No stop times are published for train ${esc(no)} today.</p></section>`;
+    app.querySelector("#back").onclick = () => go({s:sid});
+    return;
+  }
   const now = tpNow().min, delay = lv?.delay || 0;
   const first = toMin(stops[0]?.DepartureTime || stops[0]?.ArrivalTime);
   const fixT = t => { let m = toMin(t); if(m==null) return null; if(m < first-60) m += 1440; return m; };
