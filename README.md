@@ -27,3 +27,13 @@ python -m http.server 8000
 ```
 
 then open http://localhost:8000. Opening `index.html` directly via `file://` may be blocked by the browser's CORS rules.
+
+## Tests
+
+The pure helpers inside `index.html` (time maths, name normalisation, HTML escaping, train-type classification) are covered by unit tests that need no dependencies:
+
+```
+node --test tests/helpers.test.js
+```
+
+The same command runs in GitHub Actions on every push and pull request.
