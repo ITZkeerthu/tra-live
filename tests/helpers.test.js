@@ -18,7 +18,7 @@ assert.ok(start >= 0 && end > start, "helper section markers not found in index.
 const ctx = vm.createContext({ Intl, Date, Object, Number, String, isNaN });
 vm.runInContext(script.slice(start, end), ctx);
 // const-declared helpers are not properties of ctx, so expose them explicitly.
-const h = vm.runInContext("({toMin, fromMin, nm, zh, norm, esc, typeInfo, STATUS, tpNow, fmtFeed})", ctx);
+const h = vm.runInContext("({toMin, fromMin, nm, zh, norm, esc, typeInfo, STATUS, tpNow, fmtFeed, cleanId})", ctx);
 
 test("toMin parses HH:MM and tolerates empty input", () => {
   assert.equal(h.toMin("00:00"), 0);
@@ -80,4 +80,14 @@ test("fmtFeed formats ISO timestamps in Taipei time", () => {
   assert.equal(h.fmtFeed("2026-01-01T00:00:00Z"), "08:00:00");
   assert.equal(h.fmtFeed(""), "—");
   assert.equal(h.fmtFeed("not a date"), "not a date");
+});
+
+test("cleanId only accepts plain station ids and train numbers from the URL hash", () => {
+  assert.equal(h.cleanId("1000"), "1000");
+  assert.equal(h.cleanId("T-123_a"), "T-123_a");
+  assert.equal(h.cleanId(null), null);
+  assert.equal(h.cleanId(""), null);
+  assert.equal(h.cleanId('"><img src=x onerror=alert(1)>'), null);
+  assert.equal(h.cleanId("../../etc"), null);
+  assert.equal(h.cleanId("1".repeat(21)), null);
 });

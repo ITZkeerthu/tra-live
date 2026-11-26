@@ -211,6 +211,10 @@ function typeInfo(t){
 const typeBadge = t => { const i = typeInfo(t); return `<span class="type" style="background:${i.color}" title="${esc(nm(t)||i.zh)}">${esc(i.label)}</span>`; };
 const STATUS = {0:"Arriving at", 1:"At", 2:"Departed"};
 
+// Station ids and train numbers come from the URL hash, so accept only plain id characters;
+// anything else would otherwise be interpolated into innerHTML attributes and API paths.
+const cleanId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,20}$/.test(v)) ? v : null;
+
 /* ---------- TDX client ---------- */
 async function getToken(force=false){
   const k = store.get("tdxKey");
@@ -303,7 +307,7 @@ async function loadTrainTT(no){
 }
 
 /* ---------- routing ---------- */
-function parseHash(){ const h = new URLSearchParams(location.hash.slice(1)); return {s:h.get("s"), t:h.get("t")}; }
+function parseHash(){ const h = new URLSearchParams(location.hash.slice(1)); return {s:cleanId(h.get("s")), t:cleanId(h.get("t"))}; }
 function go(params){ const h = new URLSearchParams(); if(params.s) h.set("s",params.s); if(params.t) h.set("t",params.t); location.hash = h.toString(); }
 window.addEventListener("hashchange", render);
 document.getElementById("home").onclick = () => go({});
